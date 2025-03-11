@@ -1,0 +1,96 @@
+<?php
+session_start();
+require("../config_apr.php");
+
+// Load existing files
+$mldate = trim(file_get_contents("/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/MFLAGS_D"));
+$sys_stat = trim(file_get_contents("/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/sys_stat1.txt_bkp"));
+$portal_ip = trim(file_get_contents("/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/portal_nslookup.txt"));
+$getDDcrr = $_GET['date'] ?? "";
+
+if (empty($getDDcrr)) {
+    $crdate  = $mldate;
+} else {
+    $crdate  = $getDDcrr;
+}
+
+$dateyear = trim(substr($crdate, 0, 4));
+$dateyearmonth = trim(substr($crdate, 0, 6));
+$currpath = "/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/" . $dateyear . "/" . $dateyearmonth . "/" . $crdate . "/";
+
+if ($mldate == $crdate) {
+    $currpath = "/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/";
+}
+
+$prevdate = date("Ymd", strtotime("-1 day", strtotime($crdate)));
+
+// Task Monitoring Integration
+require("monitorExternalFile1.php");
+$task_status_file = "/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/task_status";
+$task_status = file_exists($task_status_file) ? trim(file_get_contents($task_status_file)) : "stop";
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Monitoring</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        .modal-content {
+            text-align: center;
+            padding: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            background-color: red;
+        }
+    </style>
+</head>
+<body>
+    <!-- Modal Pop-up -->
+    <div class="modal fade" id="taskModal" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Task Alert</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    🔴 Task is Running...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function checkTaskStatus() {
+            $.ajax({
+                url: 'check_task_status.php',
+                method: 'GET',
+                success: function(response) {
+                    if (response.trim() === 'start') {
+                        $("#taskModal").modal('show');
+                    } else {
+                        $("#taskModal").modal('hide');
+                    }
+                }
+            });
+        }
+
+        // Auto-check every 5 seconds
+        setInterval(checkTaskStatus, 5000);
+        
+        // Initial check on page load
+        $(document).ready(function() {
+            checkTaskStatus();
+        });
+    </script>
+    
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
