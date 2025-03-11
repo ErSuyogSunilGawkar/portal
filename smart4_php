@@ -1,0 +1,64 @@
+<?php
+    $taskStatusFile = "/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/task_status.txt";
+    $taskStatus = trim(file_get_contents($taskStatusFile));
+?>
+
+<?php
+    /* Existing code */
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor External File</title>
+    <style>
+        #popup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <?php if ($taskStatus == "start"): ?>
+        <div id="popup">
+            <p>Important Notification: Task has started!</p>
+            <button onclick="closePopup()">Close</button>
+        </div>
+    <?php endif; ?>
+
+    <script>
+        function closePopup() {
+            document.getElementById('popup').style.display = 'none';
+        }
+        
+        function checkTaskStatus() {
+            fetch('check_task_status.php')
+                .then(response => response.text())
+                .then(status => {
+                    let popup = document.getElementById('popup');
+                    if (status.trim() === 'start') {
+                        popup.style.display = 'block';
+                    } else {
+                        popup.style.display = 'none';
+                    }
+                });
+        }
+        
+        setInterval(checkTaskStatus, 5000);
+    </script>
+</body>
+</html>
+
+<?php
+    /* Remaining existing code */
+?>
