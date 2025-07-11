@@ -1,2 +1,4 @@
 [Fri Jul 11 16:09:58.896577 2025] [php:notice] [pid 152364] [client 10.0.6.157:61941] PHP Fatal error:  Uncaught Error: Non-static method msl::app_stat1() cannot be called statically in /var/www/html/pace/Online_portal/pages/smart.php:416\nStack trace:\n#0 {main}\n  thrown in /var/www/html/pace/Online_portal/pages/smart.php on line 416, referer: https://10.0.40.9:9090/pace/Online_portal/pages/smart.php
+
+
 [Fri Jul 11 20:43:38.592003 2025] [php:notice] [pid 372966] [client 10.0.6.61:50314] PHP Fatal error:  Uncaught TypeError: Unsupported operand types: null + string in /var/www/html/pace/Online_portal/includes/eodFunct.php:443\nStack trace:\n#0 /var/www/html/pace/Online_portal/pages/eodFile.php(395): eod->injobs()\n#1 /var/www/html/pace/Online_portal/pages/eod.php(466): include('/var/www/html/p...')\n#2 {main}\n  thrown in /var/www/html/pace/Online_portal/includes/eodFunct.php on line 443, referer: https://10.0.40.9:9090/pace/Online_portal/pages/eod.php
