@@ -1,120 +1,334 @@
-<?php
-    $taskStatusFile = "/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/task_status.txt";
-    $taskStatus = trim(file_get_contents($taskStatusFile));
+################################# DAILY.sql #########################################
 
-    $MasterDecider=explode(".", file_get_contents("/opt/hpws/apache/cgi-bin/trials/bip/data/TESTING/DR_CHECK"));
-    switch($MasterDecider[1]){
-        case "0":
-            $DBdecider='PR';
-            $trickleuploadserver="BHAGA";
-            break;
-        case "176":
-            $DBdecider='DR(No Auto Switch)';
-            $trickleuploadserver="PALAR";
-            break;
-        case "189":
-            $DBdecider='NR(No Auto Switch)';
-            $trickleuploadserver="BRAMHA";
-            break;
-        default:
-            $DBdecider='PR';
-            break;
-    }
-?>
+-bash-5.1$ cat daily.sql
+set time on
+set lines 200
+set pagesize 1550
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitor External File</title>
-    <style>
-        #popup {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            z-index: 1000;
-        }
-    </style>
-</head>
-<body>
-    <?php if ($taskStatus == "start"): ?>
-        <div id="popup">
-            <p>Important Notification: Task has started!</p>
-            <button onclick="closePopup()">Close</button>
-        </div>
-    <?php endif; ?>
 
-    <script>
-        function closePopup() {
-            document.getElementById('popup').style.display = 'none';
-        }
-        
-        function checkTaskStatus() {
-            fetch('check_task_status.php')
-                .then(response => response.text())
-                .then(status => {
-                    let popup = document.getElementById('popup');
-                    if (status.trim() === 'start') {
-                        popup.style.display = 'block';
-                    } else {
-                        popup.style.display = 'none';
-                    }
-                });
-        }
-        
-        setInterval(checkTaskStatus, 5000);
-    </script>
+prompt ++++++++++++++++++++RMAN BACKUP STATUS+++++++++++++++++++++++++
+col INPUT_TYPE for a30
+col START_TIME for a20
+col END_TIME for a20
+col TIME_TAKEN_DISPLAY for a20
+SELECT
+    INPUT_TYPE,
+        START_TIME,
+         END_TIME,TIME_TAKEN_DISPLAY,
+    STATUS
+FROM
+    V$RMAN_BACKUP_JOB_DETAILS
+where trunc(START_TIME)=trunc(sysdate)
+ORDER BY
+    START_TIME;
 
-    <section class="content">
-        <div class="row">
-            <div class="col-xs-12">
-                <div class="box" style="background-color:#cdc;">
-                    <div class="row">
-                        <div class="col-md-12" style="position:relative; min-height: 1px; padding-right: 0px; padding-left: 0px;">
-                            <div class="col-lg-6 col-md-12 col-sm-12 col-xs-12 jobs_btn">
-                                <div class="box box-primary box-solid" id="boxjobs">
-                                    <div class="box-header bg-tcs-active text-center">
-                                        <h3 class="box-title">Jobs</h3>
-                                    </div>
-                                    <div class="box-body table-responsive">
-                                        <table class="table table-bordered table-striped text-center">
-                                            <thead>
-                                                <tr>
-                                                    <th style="width:110px;">JOB Name</th>
-                                                    <th>M</th>
-                                                    <th>S1</th>
-                                                    <th>S2</th>
-                                                    <th>S3</th>
-                                                    <th>S4</th>
-                                                    <th>S5</th>
-                                                    <th>S6</th>
-                                                    <th>S7</th>
-                                                    <th>S8</th>
-                                                    <th>S9</th>
-                                                    <th>S10</th>
-                                                    <th>S11</th>
-                                                    <th>S12</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="jobsappend">
-                                                <?php $aplnMonior->gateway(); ?>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-</body>
-</html>
+prompt ++++++++++++++++++++ASM DISK Details+++++++++++++++++++++++++
+
+SELECT
+    name,
+    total_mb/1024 as TOTAL_GB,
+    free_mb/1024 as FREE_GB,
+    state
+FROM
+    v$asm_diskgroup;
+
+prompt ++++++++++++++++++++TABLESPACE Details+++++++++++++++++++++++++
+
+SELECT
+    df.tablespace_name,
+    ROUND(SUM(df.bytes) / (1024 * 1024 * 1024), 2) AS total_size_gb,
+    ROUND(SUM(df.bytes - NVL(f.bytes, 0)) / (1024 * 1024 * 1024), 2) AS used_size_gb,
+    ROUND(NVL(SUM(f.bytes), 0) / (1024 * 1024 * 1024), 2) AS free_size_gb
+FROM
+    dba_data_files df
+LEFT JOIN
+    (SELECT tablespace_name, SUM(bytes) AS bytes FROM dba_free_space GROUP BY tablespace_name) f
+ON
+    df.tablespace_name = f.tablespace_name
+GROUP BY
+    df.tablespace_name
+ORDER BY
+    total_size_gb DESC;
+
+prompt ++++++++++++++++++++LAST SEQUENCE RECIEVED FROM PRODUCTION and APPLIED ON STANDBY+++++++++++++++++++++++++
+
+SELECT ARCH.THREAD# "Thread", ARCH.SEQUENCE# "Last Sequence Received", APPL.SEQUENCE# "Last Sequence Applied", (ARCH.SEQUENCE# - APPL.SEQUENCE#) "Difference"
+FROM
+(SELECT THREAD# ,SEQUENCE# FROM V$ARCHIVED_LOG WHERE (THREAD#,FIRST_TIME ) IN (SELECT THREAD#,MAX(FIRST_TIME) FROM V$ARCHIVED_LOG GROUP BY THREAD#)) ARCH,
+(SELECT THREAD# ,SEQUENCE# FROM V$LOG_HISTORY WHERE (THREAD#,FIRST_TIME ) IN (SELECT THREAD#,MAX(FIRST_TIME) FROM V$LOG_HISTORY GROUP BY THREAD#)) APPL
+WHERE
+ARCH.THREAD# = APPL.THREAD#
+;
+
+prompt ++++++++++++++++++++CHECK FOR GAP AT STANDBY+++++++++++++++++++++++++
+
+SELECT THREAD#, LOW_SEQUENCE#, HIGH_SEQUENCE# FROM V$ARCHIVE_GAP;
+
+prompt ++++++++++++++++++++CHECK FOR GAP AT STANDBY+++++++++++++++++++++++++
+
+select sysdate,database_mode,recovery_mode, gap_status from v$archive_dest_status where type='PHYSICAL' and gap_status !='NO GAP';
+
+
+prompt ++++++++++++++++++++CHECK ERROR AT STANDBY+++++++++++++++++++++++++
+
+select * from v$dataguard_status where severity in ('Error','Fatal') and timestamp > (sysdate -1);
+
+
+prompt ++++++++++++++++++++Scheduled jobs+++++++++++++++++++++++++
+col log_date for a30
+col owner for a10
+col job_name for a30
+col status for a10
+
+SELECT trunc(log_date), owner, job_name, status, actual_start_date
+FROM dba_scheduler_job_run_details WHERE status <> 'SUCCEEDED' and trunc(log_date)=trunc(sysdate-1)
+ORDER BY actual_start_date desc;
+
+prompt ++++++++++++++++++++INVAILD OBJECTS+++++++++++++++++++++++++
+
+SELECT COUNT(*) AS "Invalid Count"
+FROM DBA_OBJECTS
+WHERE STATUS = 'INVALID';
+
+
+################################# TBS.sql #########################################
+
+-bash-5.1$ cat tbs.sql
+ALTER SESSION SET CONTAINER=TNDBPRODPDB;
+
+set line 350
+set pagesize 1500
+
+col TABLESPACE_NAME for a30
+col USED_SPACE for a20
+col TABLESPACE_SIZE for a30
+
+SELECT
+    df.tablespace_name,
+    ROUND(df.total_space_gb,2),
+    ROUND(fs.free_space_gb,2),
+    ROUND((df.total_space_gb - fs.free_space_gb),2) AS used_space_gb,
+    ROUND((df.total_space_gb - fs.free_space_gb) / df.total_space_gb * 100, 2) AS used_percent
+FROM
+    (SELECT tablespace_name,
+            SUM(bytes) / 1024 / 1024/1024 AS total_space_gb
+     FROM dba_data_files
+     GROUP BY tablespace_name) df
+JOIN
+    (SELECT tablespace_name,
+            SUM(bytes) / 1024 / 1024/1024 AS free_space_gb
+     FROM dba_free_space
+     GROUP BY tablespace_name) fs
+ON df.tablespace_name = fs.tablespace_name
+order by 5 desc;
+
+ select tablespace_name tablespace, status, sum(bytes)/1024/1024/1024 sum_in_gb, count(*) counts
+from dba_undo_extents
+group by tablespace_name, status order by 1,2;
+
+
+################################# ARCH.sql #########################################
+
+-bash-5.1$ cat arch.sql
+set line 550
+col name for a30
+col space_limit for a30
+col space_used for a30
+
+select trunc(COMPLETION_TIME,'DD') Day, thread#,
+round(sum(BLOCKS*BLOCK_SIZE)/1024/1024/1024) GB,
+count(*) Archives_Generated from v$archived_log where trunc(COMPLETION_TIME)=trunc(sysdate-1)
+group by trunc(COMPLETION_TIME,'DD'),thread# order by 1 desc;
+
+SELECT
+  name,
+  round(space_limit / 1024 / 1024 / 1024, 2) AS "Total Size (GB)",
+  round(space_used / 1024 / 1024 / 1024, 2) AS "Used Size (GB)"
+FROM
+  v$recovery_file_dest;
+
+SELECT TO_CHAR(TRUNC(FIRST_TIME),'Mon DD') "DG Date",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'01',1,0)),'9999') "01AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'02',1,0)),'9999') "02AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'03',1,0)),'9999') "03AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'04',1,0)),'9999') "04AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'05',1,0)),'9999') "05AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'06',1,0)),'9999') "06AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'07',1,0)),'9999') "07AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'08',1,0)),'9999') "08AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'09',1,0)),'9999') "09AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'10',1,0)),'9999') "10AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'11',1,0)),'9999') "11AM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'12',1,0)),'9999') "12PM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'13',1,0)),'9999') "1PM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'14',1,0)),'9999') "2PM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'15',1,0)),'9999') "3PM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'16',1,0)),'9999') "4PM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'17',1,0)),'9999') "5PM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'18',1,0)),'9999') "6PM",
+TO_CHAR(SUM(DECODE(TO_CHAR(FIRST_TIME,'HH24'),'19',1,0)),'9999') "7PM"
+FROM V$LOG_HISTORY where TRUNC(FIRST_TIME) =trunc(sysdate)
+GROUP BY TRUNC(FIRST_TIME)
+ORDER BY TRUNC(FIRST_TIME) DESC;
+
+
+################################# ind.sql #########################################
+
+
+-bash-5.1$ cat ind.sql
+set head off
+
+ALTER SESSION SET CONTAINER=TNDBPRODPDB;
+
+spool /export/home/oracle/scripts/val.sql
+SELECT 'ALTER ' || object_type || ' ' || Owner || '.'|| OBJECT_NAME  || ' COMPILE;' FROM dba_OBJECTS WHERE STATUS = 'INVALID';
+
+
+spool off
+
+##@/export/home/oracle/scripts/val.sql
+
+SELECT count(1) FROM dba_OBJECTS WHERE STATUS = 'INVALID';
+
+SELECT  Owner, object_type, OBJECT_NAME FROM dba_OBJECTS WHERE STATUS = 'INVALID';
+
+
+################################# job.sql #########################################
+
+
+-bash-5.1$ cat job.sql
+
+set line 650
+set pagesize 1500
+
+col log_date for a10
+col owner for a10
+col job_name for a50
+col status for a10
+col actual_start_date for a60
+
+SELECT trunc(log_date), owner, job_name, status
+FROM dba_scheduler_job_run_details
+WHERE status = 'FAILED' and log_date > SYSDATE - 1
+ORDER BY actual_start_date desc;
+
+
+################################# lock.sql #########################################
+
+-bash-5.1$ cat lock.sql
+set lines 200 pagesize 1500
+col Object for a20
+col Terminal for a15
+col sql_id for a15
+col Locker for a15
+
+SELECT session_id "sid",SERIAL# "Serial",sql_id,
+SUBSTR(object_name,1,20) "Object",
+SUBSTR(os_user_name,1,10) "Terminal",
+SUBSTR(oracle_username,1,10) "Locker",
+NVL(lockwait,'active') "Wait",
+DECODE(locked_mode,
+2, 'row share',
+3, 'row exclusive',
+4, 'share',
+5, 'share row exclusive',
+6, 'exclusive', 'unknown') "Lockmode"
+FROM
+SYS.V_$LOCKED_OBJECT A,
+SYS.ALL_OBJECTS B,
+SYS.V_$SESSION c
+WHERE
+A.OBJECT_ID = B.OBJECT_ID AND
+C.SID = A.SESSION_ID
+ORDER BY 1 ASC, 5 DESC;
+
+
+
+SELECT s.sid, s.serial#, s.username, s.status, l.type, l.lmode
+FROM v$session s, v$lock l
+WHERE s.sid = l.sid
+AND l.type IN ('TX', 'TM', 'UL');
+
+
+################################# blocking.sql #########################################
+
+
+-bash-5.1$ cat blocking.sql
+SET LINESIZE 150
+SET PAGESIZE 350
+COLUMN blocking_sid FORMAT 99999
+COLUMN blocking_user FORMAT A20
+COLUMN blocked_sid FORMAT 99999
+COLUMN blocked_user FORMAT A20
+COLUMN status FORMAT A10
+
+select sid, serial#,blocking_session,username,status,OSUSER,MACHINE from v$session where blocking_session <>'NULL';
+
+select vlo.session_id, vs.serial#, vlo.object_id, vlo.oracle_username, vlo.process, DECODE(vlo.LOCKED_MODE, 0,'NONE', 1,'NULL', 2,'ROW SHARE',
+3,'ROW EXCLUSIVE', 4,'SHARE', 5,'SHARE ROW EXCLUSIVE', 6,'EXCLUSIVE', NULL) LOCK_MODE, do.owner, do.object_name, do.object_type, vs.saddr, vs.paddr,
+vs.username, vs.ownerid, vs.status, vs.server, vs.schemaname, vs.osuser, vs.machine, vs.program, vs.type, vs.logon_time, vs.last_call_et, vs.blocking_session_status, vs.event#, vs.event, vs.wait_class#, vs.wait_class, vs.wait_time, vs.seconds_in_wait, vs.state
+from v$locked_object vlo
+inner join dba_objects do on (vlo.object_id = do.object_id)
+left outer join v$session vs on (vlo.session_id = vs.sid);
+
+SELECT DECODE(request,0,'Holder: ','Waiter: ') || gv$lock.sid sess, machine, do.object_name as locked_object,id1, id2, lmode, request, gv$lock.type
+FROM gv$lock join gv$session on gv$lock.sid=gv$session.sid and gv$lock.inst_id=gv$session.inst_id
+join gv$locked_object lo on gv$lock.SID = lo.SESSION_ID and gv$lock.inst_id=lo.inst_id
+join dba_objects do on lo.OBJECT_ID = do.OBJECT_ID
+WHERE (id1, id2, gv$lock.type) IN (
+  SELECT id1, id2, type FROM gv$lock WHERE request>0)
+ORDER BY id1, request;
+
+
+################################# sync.sql #########################################
+
+-bash-5.1$ cat sync.sql
+set time on
+set lines 500
+col FACILITY for a30
+col SEVERITY for a10
+col MESSAGE for a60
+
+prompt ++++++++++++++++++++LAST SEQUENCE RECIEVED FROM PRODUCTION and APPLIED ON STANDBY+++++++++++++++++++++++++
+
+SELECT ARCH.THREAD# "Thread", ARCH.SEQUENCE# "Last Sequence Received", APPL.SEQUENCE# "Last Sequence Applied", (ARCH.SEQUENCE# - APPL.SEQUENCE#) "Difference"
+FROM
+(SELECT THREAD# ,SEQUENCE# FROM V$ARCHIVED_LOG WHERE (THREAD#,FIRST_TIME ) IN (SELECT THREAD#,MAX(FIRST_TIME) FROM V$ARCHIVED_LOG GROUP BY THREAD#)) ARCH,
+(SELECT THREAD# ,SEQUENCE# FROM V$LOG_HISTORY WHERE (THREAD#,FIRST_TIME ) IN (SELECT THREAD#,MAX(FIRST_TIME) FROM V$LOG_HISTORY GROUP BY THREAD#)) APPL
+WHERE
+ARCH.THREAD# = APPL.THREAD#
+;
+
+prompt ++++++++++++++++++++CHECK FOR GAP AT STANDBY+++++++++++++++++++++++++
+
+SELECT THREAD#, LOW_SEQUENCE#, HIGH_SEQUENCE# FROM V$ARCHIVE_GAP;
+
+prompt ++++++++++++++++++++CHECK FOR GAP AT STANDBY+++++++++++++++++++++++++
+
+select sysdate,database_mode,recovery_mode, gap_status from v$archive_dest_status where type='PHYSICAL' and gap_status !='NO GAP';
+
+
+prompt ++++++++++++++++++++CHECK ERROR AT STANDBY+++++++++++++++++++++++++
+
+select FACILITY,SEVERITY,DEST_ID,TIMESTAMP,MESSAGE from v$dataguard_status where severity in ('Error','Fatal') and timestamp > (sysdate -1);
+
+set line 350
+col DEST_NAME for a30
+
+select dest_name,error from gv$archive_dest_status where status!='INACTIVE';
+
+
+################################# sesn.sql #########################################
+
+-bash-5.1$ cat sess.sql
+set line 350
+set pagesize 1500
+col username for a30
+
+SELECT count(1) "ACTIVE_SESSION"
+FROM v$session
+WHERE status = 'ACTIVE' and service_name<>'SYS$BACKGROUND';
+
+SELECT sid, serial#,program, username, status
+FROM v$session
+WHERE status = 'ACTIVE' and service_name<>'SYS$BACKGROUND';
